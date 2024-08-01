@@ -1,10 +1,12 @@
-from pyflowlauncher import Plugin, Result, ResultResponse, Method
+from pyflowlauncher import JsonRPCAction, Plugin, Result, ResultResponse, Method
+import pyflowlauncher
 import os;
 import subprocess;
 import json;
 from pyflowlauncher import Result
 import favicon, urllib.request
 import pathlib, tempfile
+from pyperclip import copy as copy_to_clipboard
 
 TEMPDIR = pathlib.Path(tempfile.gettempdir())
 DEFAULT_ICON = f"{pathlib.Path(__file__).parent.absolute()}/icons/bitwarden256x256.png"
@@ -56,20 +58,33 @@ class Bitwarden:
         
         return results
 
+
 def entry(item):
     login = item["login"]
     username = login["username"]
     password = login["password"]
     icon = get_icon(item)
 
+    action = JsonRPCAction(
+        method="copy",
+        parameters=[password]
+    )
+
     result = Result(
         Title=item["name"],
         SubTitle=username,
         CopyText=password,
-        IcoPath=icon
+        IcoPath=icon,
+        JsonRPCAction=action
     )
 
     return result
+
+
+def fetch_icon(url):
+    try: return favicon.get(url)[0]
+    except: return
+
 
 def get_icon(item) -> str | pathlib.Path:
     urls = item["login"]["uris"]
@@ -78,8 +93,12 @@ def get_icon(item) -> str | pathlib.Path:
         url = urls[0]["uri"]
     else: return DEFAULT_ICON
 
+    icon = fetch_icon(url)
+    if not icon: icon = fetch_icon(url.replace("https://","").replace("http://","").split("/")[0])
+    if not icon: return DEFAULT_ICON
+
+    icon_path = f"{TEMPDIR}/{item["name"]}.png"
     try:
-        icon_path = f"{TEMPDIR}/{item["name"]}.png"
         if not os.path.exists(icon_path):
             icon = favicon.get(url)[0]
             urllib.request.urlretrieve(icon.url, icon_path)
@@ -87,6 +106,9 @@ def get_icon(item) -> str | pathlib.Path:
     except:
         return DEFAULT_ICON
 
+
+def copy(content):
+    copy_to_clipboard(content)
 
 bw = Bitwarden()
 
@@ -100,6 +122,8 @@ class Query(Method):
         results = bw.search(query)
         for r in results: self.add_result(r)
         return self.return_results()
+    
 
 plugin.add_method(Query())
+plugin.add_method(copy)
 plugin.run()
